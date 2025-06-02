@@ -10,6 +10,9 @@ import { useRouter } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
+import type { UserResponseDTO, CreateUserRequestDTO, } from '@/types/dto';
+
+
 // Dummy data for patients in queue
 const dummyAntrian = [
   {

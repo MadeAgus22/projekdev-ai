@@ -9,6 +9,7 @@ import { Edit, FileText, Plus, Search, Trash2 } from "lucide-react"
 import { PasienForm } from "@/components/pasien/pasien-form"
 import { DeleteConfirmation } from "@/components/ui/delete-confirmation"
 import { useToast } from "@/components/ui/use-toast"
+import type { UserResponseDTO, CreateUserRequestDTO, } from '@/types/dto';
 
 // Dummy data for patients
 const dummyPasien = [

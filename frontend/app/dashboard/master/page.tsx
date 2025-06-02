@@ -18,7 +18,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/components/ui/use-toast"
 import { Plus, Pencil, Trash2 } from "lucide-react"
-import type { UserResponseDTO, CreateUserRequestDTO, } from '@/types/dto';
+import type { UserResponseDTO, CreateUserRequestDTO, } from '@/types/dto'; 
 
 // Dummy data for treatments
 const dummyTreatments = [

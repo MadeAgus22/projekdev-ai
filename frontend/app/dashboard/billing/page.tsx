@@ -33,6 +33,8 @@ import {
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/components/ui/use-toast"
+import type { UserResponseDTO, CreateUserRequestDTO, } from '@/types/dto';
+
 
 // Define the Billing type
 type Billing = {
