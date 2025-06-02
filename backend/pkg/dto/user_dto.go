@@ -36,4 +36,5 @@ type UserResponse struct {
 	LastLogin   *time.Time `json:"lastLogin,omitempty"`
 	CreatedAt   time.Time  `json:"createdAt"`
 	UpdatedAt   time.Time  `json:"updatedAt"`
+	Permissions []string   `json:"permissions,omitempty"`
 }

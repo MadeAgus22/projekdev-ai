@@ -9,12 +9,13 @@ type LoginRequest struct {
 
 // LoginResponse DTO untuk respons login
 type LoginResponse struct {
-	Token       string `json:"token"`
-	ID          uint   `json:"id"`
-	Username    string `json:"username"`
-	NamaLengkap string `json:"namaLengkap"`
-	Email       string `json:"email"`
-	Role        string `json:"role"`
+	Token       string   `json:"token"`
+	ID          uint     `json:"id"`
+	Username    string   `json:"username"`
+	NamaLengkap string   `json:"namaLengkap"`
+	Email       string   `json:"email"`
+	Role        string   `json:"role"`
+	Permissions []string `json:"permissions,omitempty"`
 }
 
 // RegisterRequest DTO untuk request registrasi user baru (oleh admin)

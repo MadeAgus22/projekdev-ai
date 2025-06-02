@@ -21,7 +21,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Pencil, Trash2, Search, ShieldCheck } from "lucide-react"
+import { Plus, Pencil, Trash2, Search, ShieldCheck, Loader2 } from "lucide-react" // Tambahkan Loader2
 import {
   Dialog,
   DialogContent,
@@ -41,7 +41,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { UserForm, type UserFormData } from "@/components/pengaturan/user-form"
 import { DeleteConfirmation } from "@/components/ui/delete-confirmation"
 import { useToast } from "@/hooks/use-toast"
-import { userService, roleService, permissionService } from "@/services/api" // Tambahkan roleService dan permissionService
+import { userService, roleService, permissionService } from "@/services/api"
 
 import type {
   UserResponseDTO,
@@ -51,12 +51,12 @@ import type {
   PermissionResponseDTO,
   CreateRoleRequestDTO,
   UpdateRoleRequestDTO,
-} from '@/types/dto'; // Import DTO yang dibutuhkan
+  PermissionSimpleDTO, // Pastikan ini diimpor jika RoleResponseDTO menggunakannya
+} from '@/types/dto';
 
-// Interface User tidak perlu diubah banyak, tapi Role dan Permission akan kita gunakan dari DTO
-interface User extends UserResponseDTO {} // Langsung gunakan DTO
-interface Role extends RoleResponseDTO {} // Langsung gunakan DTO
-interface Permission extends PermissionResponseDTO {} // Langsung gunakan DTO
+interface User extends UserResponseDTO {}
+interface Role extends RoleResponseDTO {} // Role sekarang akan memiliki field 'permissions' dari tipe PermissionSimpleDTO[]
+interface Permission extends PermissionResponseDTO {}
 
 interface PaginationInfo {
   currentPage: number;
@@ -65,18 +65,19 @@ interface PaginationInfo {
   pageSize: number;
 }
 
-
 export default function PengaturanPage() {
   const [users, setUsers] = useState<User[]>([])
-  const [roles, setRoles] = useState<Role[]>([]) // State untuk roles dari API
-  const [permissions, setPermissions] = useState<Permission[]>([]) // State untuk permissions dari API
+  const [roles, setRoles] = useState<Role[]>([])
+  const [permissions, setPermissions] = useState<Permission[]>([])
 
   const [isLoadingUsers, setIsLoadingUsers] = useState(true)
-  const [isLoadingRoles, setIsLoadingRoles] = useState(false) // Loading state untuk roles
-  const [isLoadingPermissions, setIsLoadingPermissions] = useState(false) // Loading state untuk permissions
+  const [isLoadingRoles, setIsLoadingRoles] = useState(false)
+  const [isLoadingPermissions, setIsLoadingPermissions] = useState(false)
+  const [isSavingPermissions, setIsSavingPermissions] = useState(false); // State untuk loading simpan permission
+
 
   const [searchTermUsers, setSearchTermUsers] = useState("")
-  const [searchTermRoles, setSearchTermRoles] = useState("") // Jika ingin ada search untuk roles
+  // const [searchTermRoles, setSearchTermRoles] = useState("")
   const [activeTab, setActiveTab] = useState("pengguna")
   const [pagination, setPagination] = useState<PaginationInfo | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -93,9 +94,8 @@ export default function PengaturanPage() {
   const [isEditPermissionsModalOpen, setIsEditPermissionsModalOpen] = useState(false)
   const [selectedRole, setSelectedRole] = useState<Role | null>(null)
   
-  // Form state untuk Add/Edit Role
   const [roleForm, setRoleForm] = useState<CreateRoleRequestDTO>({ nama: "", kode: "", deskripsi: "", permissionKodes: [] });
-  const [currentRolePermissions, setCurrentRolePermissions] = useState<string[]>([]); // Kode permissions yang tercentang
+  const [currentRolePermissions, setCurrentRolePermissions] = useState<string[]>([]);
 
   const { toast } = useToast()
 
@@ -105,30 +105,21 @@ export default function PengaturanPage() {
       const response = await userService.getAll(page, itemsPerPage, search);
       if (response.success && Array.isArray(response.data)) {
         setUsers(response.data);
-        if (response.pagination) {
-            setPagination(response.pagination);
-        } else {
-             setPagination({
-                currentPage: page,
-                totalPages: Math.ceil((response.data.length || 0) / itemsPerPage) || 1,
-                totalRecords: response.data.length || 0,
-                pageSize: itemsPerPage,
-            });
-        }
+        setPagination(response.pagination || {
+            currentPage: page,
+            totalPages: Math.ceil((response.data.length || 0) / itemsPerPage) || 1,
+            totalRecords: response.data.length || 0,
+            pageSize: itemsPerPage,
+        });
       } else {
         setUsers([]);
         setPagination(null);
-        toast({ title: "Info", description: response.message || "Tidak ada data pengguna.", variant: "default" });
+        if(response.message) toast({ title: "Info Pengguna", description: response.message, variant: "default" });
       }
     } catch (error) {
       console.error("Error fetching users:", error);
-      toast({
-        title: "Gagal Memuat Pengguna",
-        description: error instanceof Error ? error.message : "Terjadi kesalahan server.",
-        variant: "destructive",
-      });
-      setUsers([]);
-      setPagination(null);
+      toast({ title: "Gagal Memuat Pengguna", description: error instanceof Error ? error.message : "Terjadi kesalahan server.", variant: "destructive" });
+      setUsers([]); setPagination(null);
     } finally {
       setIsLoadingUsers(false);
     }
@@ -142,7 +133,7 @@ export default function PengaturanPage() {
         setRoles(response.data);
       } else {
         setRoles([]);
-        toast({ title: "Info", description: response.message || "Tidak ada data role.", variant: "default" });
+        if(response.message) toast({ title: "Info Role", description: response.message, variant: "default" });
       }
     } catch (error) {
       console.error("Error fetching roles:", error);
@@ -161,7 +152,7 @@ export default function PengaturanPage() {
         setPermissions(response.data);
       } else {
         setPermissions([]);
-        toast({ title: "Info", description: response.message || "Tidak ada data permission.", variant: "default" });
+         if(response.message) toast({ title: "Info Permission", description: response.message, variant: "default" });
       }
     } catch (error) {
       console.error("Error fetching permissions:", error);
@@ -172,17 +163,18 @@ export default function PengaturanPage() {
     }
   }, [toast]);
 
-
   useEffect(() => {
     if (activeTab === "pengguna") {
       fetchUsers(currentPage, searchTermUsers);
     } else if (activeTab === "hak-akses") {
       fetchRoles();
-      fetchPermissions(); // Permissions dibutuhkan untuk modal edit hak akses
+      if (permissions.length === 0) { // Hanya fetch jika belum ada
+        fetchPermissions();
+      }
     }
-  }, [activeTab, fetchUsers, fetchRoles, fetchPermissions, currentPage, searchTermUsers]);
+  }, [activeTab, fetchUsers, fetchRoles, fetchPermissions, currentPage, searchTermUsers, permissions.length]);
 
-  // User Handlers (sudah ada, pastikan parameter dan payload sesuai)
+
   const handleAddUserSubmit = async (formDataFromUserForm: UserFormData) => {
     setIsLoadingUsers(true);
     try {
@@ -190,24 +182,20 @@ export default function PengaturanPage() {
         namaLengkap: formDataFromUserForm.nama,
         username: formDataFromUserForm.username,
         email: formDataFromUserForm.email,
-        password: formDataFromUserForm.password, // Pastikan password ada jika required
+        password: formDataFromUserForm.password,
         role: formDataFromUserForm.role,
         status: formDataFromUserForm.status,
         phoneNumber: formDataFromUserForm.phoneNumber,
       };
-
       const response = await userService.create(payload);
       if (response.success && response.data) {
         toast({ title: "Sukses", description: `Pengguna ${response.data.namaLengkap} berhasil ditambahkan.` });
-        fetchUsers(1, ""); // Refresh data ke halaman 1
-        setCurrentPage(1);
-        setSearchTermUsers("");
+        fetchUsers(1, ""); setCurrentPage(1); setSearchTermUsers("");
         setIsAddUserModalOpen(false);
       } else {
         toast({ title: "Gagal Menambah Pengguna", description: response.message || "Terjadi kesalahan.", variant: "destructive" });
       }
     } catch (error) {
-      console.error("Error adding user:", error);
       toast({ title: "Error Saat Menambah Pengguna", description: error instanceof Error ? error.message : "Terjadi kesalahan.", variant: "destructive" });
     } finally {
       setIsLoadingUsers(false);
@@ -226,21 +214,16 @@ export default function PengaturanPage() {
         status: formDataFromUserForm.status,
         phoneNumber: formDataFromUserForm.phoneNumber,
       };
-      if (formDataFromUserForm.password) {
-        payloadToUpdate.password = formDataFromUserForm.password;
-      }
-
+      if (formDataFromUserForm.password) payloadToUpdate.password = formDataFromUserForm.password;
       const response = await userService.update(formDataFromUserForm.id.toString(), payloadToUpdate);
       if (response.success && response.data) {
         toast({ title: "Sukses", description: `Data pengguna ${response.data.namaLengkap} berhasil diperbarui.` });
-        fetchUsers(currentPage, searchTermUsers); // Refresh data di halaman saat ini
-        setIsEditUserModalOpen(false);
-        setSelectedUser(null);
+        fetchUsers(currentPage, searchTermUsers);
+        setIsEditUserModalOpen(false); setSelectedUser(null);
       } else {
         toast({ title: "Gagal Memperbarui Pengguna", description: response.message || "Terjadi kesalahan.", variant: "destructive" });
       }
     } catch (error) {
-      console.error("Error editing user:", error);
       toast({ title: "Error Saat Memperbarui Pengguna", description: error instanceof Error ? error.message : "Terjadi kesalahan.", variant: "destructive" });
     } finally {
       setIsLoadingUsers(false);
@@ -252,41 +235,32 @@ export default function PengaturanPage() {
     setIsLoadingUsers(true);
     try {
       const response = await userService.delete(selectedUser.id.toString());
-      // Backend Anda mungkin mengembalikan success:false jika gagal, atau tidak mengembalikan body jika sukses (204 No Content)
-      // Sesuaikan kondisi ini dengan respons backend Anda
-      if (response.success !== false) { // Asumsi jika tidak false, maka sukses
+      if (response.success !== false) {
         toast({ title: "Sukses", description: `Pengguna ${selectedUser.namaLengkap} berhasil dihapus.` });
-        fetchUsers(currentPage, searchTermUsers); // Refresh
-        setIsDeleteUserModalOpen(false);
-        setSelectedUser(null);
+        fetchUsers(currentPage, searchTermUsers);
+        setIsDeleteUserModalOpen(false); setSelectedUser(null);
       } else {
         toast({ title: "Gagal Menghapus Pengguna", description: response.message || "Terjadi kesalahan.", variant: "destructive" });
       }
     } catch (error) {
-      console.error("Error deleting user:", error);
       toast({ title: "Error", description: error instanceof Error ? error.message : "Gagal menghubungi server.", variant: "destructive" });
     } finally {
       setIsLoadingUsers(false);
     }
   };
-  // End of User Handlers
 
-  // Role Handlers
   const resetRoleForm = () => setRoleForm({ nama: "", kode: "", deskripsi: "", permissionKodes: [] });
 
   const handleAddRole = async () => {
     if (!roleForm.nama || !roleForm.kode) {
-      toast({ title: "Validasi Gagal", description: "Nama dan Kode Role wajib diisi.", variant: "destructive" });
-      return;
+      toast({ title: "Validasi Gagal", description: "Nama dan Kode Role wajib diisi.", variant: "destructive" }); return;
     }
     setIsLoadingRoles(true);
     try {
-      const response = await roleService.create(roleForm);
+      const response = await roleService.create(roleForm); // roleForm sudah termasuk permissionKodes jika ada
       if (response.success && response.data) {
         toast({ title: "Sukses", description: `Role ${response.data.nama} berhasil ditambahkan.` });
-        fetchRoles();
-        setIsAddRoleModalOpen(false);
-        resetRoleForm();
+        fetchRoles(); setIsAddRoleModalOpen(false); resetRoleForm();
       } else {
         toast({ title: "Gagal Menambah Role", description: response.message || "Terjadi kesalahan.", variant: "destructive" });
       }
@@ -299,25 +273,22 @@ export default function PengaturanPage() {
 
   const handleEditRole = async () => {
     if (!selectedRole || !roleForm.nama || !roleForm.kode) {
-      toast({ title: "Validasi Gagal", description: "Nama dan Kode Role wajib diisi.", variant: "destructive" });
-      return;
+      toast({ title: "Validasi Gagal", description: "Nama dan Kode Role wajib diisi.", variant: "destructive" }); return;
     }
     setIsLoadingRoles(true);
     const payload: UpdateRoleRequestDTO = {
         nama: roleForm.nama,
         kode: roleForm.kode,
         deskripsi: roleForm.deskripsi,
-        // permissionKodes akan di-handle oleh handleSavePermissions jika diubah dari modal terpisah
-        // Jika ingin update permissions bersamaan, tambahkan roleForm.permissionKodes di sini.
+        // permissionKodes tidak diupdate di sini, tapi di modal terpisah
     };
     try {
-      const response = await roleService.update(selectedRole.id, payload);
+      const response = await roleService.update(selectedRole.id.toString(), payload);
       if (response.success && response.data) {
         toast({ title: "Sukses", description: `Role ${response.data.nama} berhasil diperbarui.` });
-        fetchRoles();
-        setIsEditRoleModalOpen(false);
+        fetchRoles(); setIsEditRoleModalOpen(false);
       } else {
-        toast({ title: "Gagal Memperbarui Role", description: response.message || "Terjadi kesalahan.", variant: "destructive" });
+        toast({ title: "Gagal Memperbarui Detail Role", description: response.message || "Terjadi kesalahan.", variant: "destructive" });
       }
     } catch (error) {
       toast({ title: "Error", description: error instanceof Error ? error.message : "Terjadi kesalahan server.", variant: "destructive" });
@@ -330,12 +301,10 @@ export default function PengaturanPage() {
     if (!selectedRole) return;
     setIsLoadingRoles(true);
     try {
-      const response = await roleService.delete(selectedRole.id);
-      if (response.success !== false) { // Asumsi jika tidak false, maka sukses
+      const response = await roleService.delete(selectedRole.id.toString());
+      if (response.success !== false) {
         toast({ title: "Sukses", description: `Role ${selectedRole.nama} berhasil dihapus.` });
-        fetchRoles();
-        setIsDeleteRoleModalOpen(false);
-        setSelectedRole(null);
+        fetchRoles(); setIsDeleteRoleModalOpen(false); setSelectedRole(null);
       } else {
         toast({ title: "Gagal Menghapus Role", description: response.message || "Role mungkin masih digunakan.", variant: "destructive" });
       }
@@ -348,16 +317,20 @@ export default function PengaturanPage() {
 
   const handleSavePermissions = async () => {
     if (!selectedRole) return;
-    setIsLoadingRoles(true);
+    setIsSavingPermissions(true); // Gunakan state loading spesifik
     const payload: UpdateRoleRequestDTO = {
-      // Hanya kirim permissionKodes, atau field lain jika memang boleh diubah dari modal ini
       permissionKodes: currentRolePermissions,
+      // Sertakan field lain dari role jika API update mengharapkannya,
+      // atau pastikan API bisa update partial (hanya permissionKodes)
+      nama: selectedRole.nama, // Kirim nama & kode agar backend tidak error jika validasi mewajibkan
+      kode: selectedRole.kode,
+      deskripsi: selectedRole.deskripsi
     };
     try {
-      const response = await roleService.update(selectedRole.id, payload);
+      const response = await roleService.update(selectedRole.id.toString(), payload);
       if (response.success && response.data) {
         toast({ title: "Sukses", description: `Hak akses untuk role ${selectedRole.nama} berhasil diperbarui.` });
-        fetchRoles(); // Refresh data roles untuk menampilkan permissions yang terupdate
+        fetchRoles(); // Refresh data roles
         setIsEditPermissionsModalOpen(false);
       } else {
         toast({ title: "Gagal Memperbarui Hak Akses", description: response.message || "Terjadi kesalahan.", variant: "destructive" });
@@ -365,10 +338,10 @@ export default function PengaturanPage() {
     } catch (error) {
       toast({ title: "Error", description: error instanceof Error ? error.message : "Terjadi kesalahan server.", variant: "destructive" });
     } finally {
-      setIsLoadingRoles(false);
+      setIsSavingPermissions(false);
     }
   };
-
+  
   const handleRoleFormChange = (field: keyof CreateRoleRequestDTO, value: string | string[]) => {
     setRoleForm(prev => ({ ...prev, [field]: value }));
   };
@@ -392,25 +365,27 @@ export default function PengaturanPage() {
 
   const openEditPermissionsModal = (role: Role) => {
     setSelectedRole(role);
+    // `role.permissions` adalah PermissionSimpleDTO[], jadi kita map kodenya
     setCurrentRolePermissions(role.permissions?.map(p => p.kode) || []);
+    if (permissions.length === 0 && !isLoadingPermissions) { // Ambil permissions jika belum ada
+        fetchPermissions();
+    }
     setIsEditPermissionsModalOpen(true);
   };
 
   const getRoleName = (roleCode?: User["role"]) => {
     if (!roleCode) return '-';
     const roleDetail = roles.find((r) => r.kode === roleCode);
-    return roleDetail ? roleDetail.nama : roleCode.charAt(0).toUpperCase() + roleCode.slice(1);
+    return roleDetail ? roleDetail.nama : String(roleCode).charAt(0).toUpperCase() + String(roleCode).slice(1);
   };
 
   const openAddUserModal = () => {
-      setSelectedUser(null); // Pastikan tidak ada selectedUser
-      // UserForm akan di-reset oleh useEffect di dalamnya jika initialData null
+      setSelectedUser(null);
       setIsAddUserModalOpen(true);
   };
   
   const openEditUserModal = (user: User) => {
     setSelectedUser(user);
-    // UserForm akan diisi dengan initialData dari selectedUser
     setIsEditUserModalOpen(true);
   };
 
@@ -419,15 +394,16 @@ export default function PengaturanPage() {
     setIsDeleteUserModalOpen(true);
   };
 
-
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      {/* ... (Bagian Judul Halaman) ... */}
+       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Pengaturan Sistem</h1>
           <p className="text-sm text-muted-foreground">Kelola pengguna, hak akses, dan pengaturan lainnya.</p>
         </div>
       </div>
+
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-2">
@@ -466,7 +442,7 @@ export default function PengaturanPage() {
               </div>
             </CardHeader>
             <CardContent>
-              {isLoadingUsers && <div className="text-center py-4">Memuat data pengguna...</div>}
+              {isLoadingUsers && <div className="text-center py-4"><Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />Memuat data pengguna...</div>}
               {!isLoadingUsers && users.length === 0 && (
                  <div className="text-center py-10 text-muted-foreground">
                     <p>Tidak ada data pengguna ditemukan.</p>
@@ -495,7 +471,7 @@ export default function PengaturanPage() {
                           <TableCell>{getRoleName(user.role as User["role"])}</TableCell>
                           <TableCell>
                             <Badge variant={user.status === "aktif" ? "default" : "outline"}
-                                   className={user.status === "aktif" ? "bg-green-100 text-green-700 border-green-200 dark:bg-green-700 dark:text-green-100 dark:border-green-600" : "bg-red-100 text-red-700 border-red-200 dark:bg-red-700 dark:text-red-100 dark:border-red-600"}>
+                                   className={user.status === "aktif" ? "bg-green-100 text-green-700 border-green-200 dark:bg-green-700/20 dark:text-green-400 dark:border-green-600/50" : "bg-red-100 text-red-700 border-red-200 dark:bg-red-700/20 dark:text-red-400 dark:border-red-600/50"}>
                               {user.status.charAt(0).toUpperCase() + user.status.slice(1)}
                             </Badge>
                           </TableCell>
@@ -544,6 +520,7 @@ export default function PengaturanPage() {
           </Card>
         </TabsContent>
 
+        {/* Tab Hak Akses & Role */}
         <TabsContent value="hak-akses" className="mt-4 space-y-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
@@ -563,7 +540,7 @@ export default function PengaturanPage() {
               </Button>
             </CardHeader>
             <CardContent>
-             {isLoadingRoles && <div className="text-center py-4">Memuat data role...</div>}
+             {isLoadingRoles && <div className="text-center py-4"><Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />Memuat data role...</div>}
              {!isLoadingRoles && roles.length === 0 && <p className="text-center py-4 text-muted-foreground">Tidak ada data role.</p>}
              {!isLoadingRoles && roles.length > 0 && (
                 <Table>
@@ -572,6 +549,7 @@ export default function PengaturanPage() {
                         <TableHead>Nama Role</TableHead>
                         <TableHead>Kode</TableHead>
                         <TableHead>Deskripsi</TableHead>
+                        <TableHead>Hak Akses</TableHead>
                         <TableHead className="text-right">Aksi</TableHead>
                     </TableRow>
                     </TableHeader>
@@ -581,6 +559,11 @@ export default function PengaturanPage() {
                         <TableCell className="font-medium">{role.nama}</TableCell>
                         <TableCell>{role.kode}</TableCell>
                         <TableCell>{role.deskripsi || "-"}</TableCell>
+                        <TableCell>
+                            {role.permissions && role.permissions.length > 0 
+                                ? role.permissions.slice(0,3).map(p => p.nama).join(', ') + (role.permissions.length > 3 ? '...' : '') 
+                                : '-'}
+                        </TableCell>
                         <TableCell className="text-right">
                             <div className="flex justify-end gap-1">
                             <Button variant="outline" size="sm" onClick={() => openEditPermissionsModal(role)} disabled={isLoadingRoles || isLoadingPermissions}>
@@ -608,6 +591,7 @@ export default function PengaturanPage() {
         </TabsContent>
       </Tabs>
 
+      {/* === MODALS === */}
       {isAddUserModalOpen && (
          <UserForm
             open={isAddUserModalOpen}
@@ -623,10 +607,10 @@ export default function PengaturanPage() {
           onOpenChange={setIsEditUserModalOpen}
           initialData={{
             id: selectedUser.id,
-            nama: selectedUser.namaLengkap, // dari UserResponseDTO
+            nama: selectedUser.namaLengkap,
             username: selectedUser.username,
             email: selectedUser.email,
-            role: selectedUser.role as UserFormData["role"], // Cast jika perlu
+            role: selectedUser.role as UserFormData["role"],
             status: selectedUser.status as UserFormData["status"],
             phoneNumber: selectedUser.phoneNumber || "",
           }}
@@ -666,11 +650,12 @@ export default function PengaturanPage() {
                           <Label htmlFor="role-deskripsi-add">Deskripsi</Label>
                           <Input id="role-deskripsi-add" value={roleForm.deskripsi} onChange={(e) => handleRoleFormChange("deskripsi", e.target.value)} disabled={isLoadingRoles}/>
                       </div>
-                      {/* Opsi untuk langsung menambahkan permission saat buat role bisa ditambahkan di sini jika perlu */}
                   </div>
                   <DialogFooter>
                       <Button type="button" variant="outline" onClick={() => setIsAddRoleModalOpen(false)} disabled={isLoadingRoles}>Batal</Button>
-                      <Button type="submit" disabled={isLoadingRoles}>{isLoadingRoles ? "Menyimpan..." : "Simpan"}</Button>
+                      <Button type="submit" disabled={isLoadingRoles}>
+                        {isLoadingRoles ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Menyimpan...</> : "Simpan"}
+                      </Button>
                   </DialogFooter>
               </form>
           </DialogContent>
@@ -701,7 +686,9 @@ export default function PengaturanPage() {
                   </div>
                   <DialogFooter>
                       <Button type="button" variant="outline" onClick={() => setIsEditRoleModalOpen(false)} disabled={isLoadingRoles}>Batal</Button>
-                      <Button type="submit" disabled={isLoadingRoles}>{isLoadingRoles ? "Menyimpan..." : "Simpan Perubahan"}</Button>
+                       <Button type="submit" disabled={isLoadingRoles}>
+                        {isLoadingRoles ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Menyimpan...</> : "Simpan Perubahan"}
+                      </Button>
                   </DialogFooter>
               </form>
           </DialogContent>
@@ -717,8 +704,8 @@ export default function PengaturanPage() {
                       <DialogDescription>Pilih hak akses yang diberikan untuk role ini.</DialogDescription>
                   </DialogHeader>
                   <div className="py-4 max-h-[60vh] overflow-y-auto">
-                      {isLoadingPermissions && <p>Memuat daftar hak akses...</p>}
-                      {!isLoadingPermissions && permissions.length === 0 && <p>Tidak ada hak akses tersedia.</p>}
+                      {isLoadingPermissions && <div className="text-center py-4"><Loader2 className="mx-auto h-6 w-6 animate-spin text-primary" />Memuat daftar hak akses...</div>}
+                      {!isLoadingPermissions && permissions.length === 0 && <p className="text-center py-4 text-muted-foreground">Tidak ada hak akses tersedia.</p>}
                       {!isLoadingPermissions && permissions.length > 0 && (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-3">
                             {permissions.map((permission) => (
@@ -728,7 +715,7 @@ export default function PengaturanPage() {
                                         checked={currentRolePermissions.includes(permission.kode)}
                                         onCheckedChange={() => togglePermission(permission.kode)}
                                         className="mt-1"
-                                        disabled={isLoadingRoles}
+                                        disabled={isSavingPermissions}
                                     />
                                     <div className="grid gap-1.5 leading-none">
                                         <label
@@ -745,8 +732,10 @@ export default function PengaturanPage() {
                       )}
                   </div>
                   <DialogFooter>
-                      <Button type="button" variant="outline" onClick={() => setIsEditPermissionsModalOpen(false)} disabled={isLoadingRoles}>Batal</Button>
-                      <Button onClick={handleSavePermissions} disabled={isLoadingRoles || isLoadingPermissions}>{isLoadingRoles ? "Menyimpan..." : "Simpan Hak Akses"}</Button>
+                      <Button type="button" variant="outline" onClick={() => setIsEditPermissionsModalOpen(false)} disabled={isSavingPermissions}>Batal</Button>
+                      <Button onClick={handleSavePermissions} disabled={isSavingPermissions || isLoadingPermissions}>
+                        {isSavingPermissions ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Menyimpan...</> : "Simpan Hak Akses"}
+                      </Button>
                   </DialogFooter>
               </DialogContent>
           </Dialog>

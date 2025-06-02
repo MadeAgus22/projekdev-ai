@@ -18,6 +18,7 @@ export interface LoginResponseDTO {
 
 // --- DTO untuk Manajemen Pengguna ---
 export interface UserResponseDTO {
+  permissions: never[];
   id: number | string;
   namaLengkap: string;
   username: string;

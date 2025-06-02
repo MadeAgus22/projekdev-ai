@@ -27,6 +27,15 @@ func main() {
 		logger.Fatal("Gagal terhubung ke database", zap.Error(err))
 	}
 
+	// Panggil seeder setelah migrasi
+	if err := database.SeedPermissions(database.DB); err != nil {
+		logger.Fatal("Gagal melakukan seeding permissions", zap.Error(err))
+	}
+	// Panggil seeder untuk role default
+	if err := database.SeedDefaultRolesAndPermissions(database.DB); err != nil {
+		logger.Fatal("Gagal melakukan seeding default roles and permissions", zap.Error(err))
+	}
+
 	// Inisialisasi Fiber App
 	app := fiber.New(fiber.Config{
 		ErrorHandler: func(ctx *fiber.Ctx, err error) error { // Custom error handler
